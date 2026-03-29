@@ -123,6 +123,26 @@ DOMAIN_PROFILES = {
             "How should policymakers balance speed against disruption?",
         ),
     },
+    "economy": {
+        "keywords": ("economy", "inflation", "interest rate", "jobs", "market", "tax", "gdp"),
+        "name": "economic policy",
+        "drivers": ("household impact", "market stability", "long-term growth"),
+        "opportunities": (
+            "improve planning confidence for families and businesses",
+            "direct resources toward high-impact sectors",
+            "balance short-term relief with long-term resilience",
+        ),
+        "risks": (
+            "produce uneven outcomes across income groups",
+            "trade long-term stability for short-term gains",
+            "increase uncertainty if policy signals are inconsistent",
+        ),
+        "questions": (
+            "Which groups feel the first-order effects most strongly?",
+            "What tradeoffs emerge over one, three, and five years?",
+            "How will decision-makers adjust if conditions change quickly?",
+        ),
+    },
 }
 
 
@@ -137,7 +157,8 @@ def _get_client():
 
 
 def _normalize_topic(topic: str) -> str:
-    return re.sub(r"\s+", " ", topic).strip()
+    normalized = re.sub(r"\s+", " ", topic).strip()
+    return normalized or "Untitled topic"
 
 
 def _detect_domain(topic: str) -> dict:
@@ -178,23 +199,61 @@ def _build_key_points(topic: str, domain: dict) -> list[str]:
     ]
 
 
+def _build_takeaway(topic: str, opportunities: list[str], risks: list[str]) -> str:
+    label = _topic_label(topic)
+    return (
+        f"A balanced read of {label.lower()} is to pursue {opportunities[0].lower()} while explicitly guarding "
+        f"against {risks[0].lower()}."
+    )
+
+
 def _mock_summary(topic: str) -> dict:
     clean_topic = _normalize_topic(topic)
     domain = _detect_domain(clean_topic)
+    opportunities = list(domain["opportunities"])
+    risks = list(domain["risks"])
     return {
         "topic": clean_topic,
         "mode": "local",
         "overview": _build_overview(clean_topic, domain),
         "key_points": _build_key_points(clean_topic, domain),
-        "opportunities": list(domain["opportunities"]),
-        "risks": list(domain["risks"]),
+        "opportunities": opportunities,
+        "risks": risks,
         "questions": list(domain["questions"]),
+        "takeaway": _build_takeaway(clean_topic, opportunities, risks),
     }
 
 
 def _split_lines(text: str, expected: int) -> list[str]:
     lines = [line.strip("- ").strip() for line in text.splitlines() if line.strip()]
     return lines[:expected]
+
+
+def _ensure_items(items: list[str], expected: int, fallback: list[str]) -> list[str]:
+    cleaned = []
+    seen = set()
+    for item in items:
+        normalized = re.sub(r"\s+", " ", item).strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        cleaned.append(normalized)
+        seen.add(key)
+        if len(cleaned) == expected:
+            return cleaned
+
+    for fallback_item in fallback:
+        key = fallback_item.lower()
+        if key in seen:
+            continue
+        cleaned.append(fallback_item)
+        seen.add(key)
+        if len(cleaned) == expected:
+            return cleaned
+
+    return cleaned[:expected]
 
 
 def _openai_summary(topic: str) -> dict:
@@ -232,6 +291,8 @@ def _openai_summary(topic: str) -> dict:
 
     for raw_line in output.splitlines():
         line = raw_line.strip()
+        if line in {"### KEY POINTS", "### OPPORTUNITIES", "### RISKS", "### QUESTIONS"}:
+            line = f"{line.replace('### ', '')}:"
         if line.startswith("OVERVIEW:"):
             if current:
                 sections[current] = "\n".join(buffer).strip()
@@ -251,14 +312,19 @@ def _openai_summary(topic: str) -> dict:
         sections[current] = "\n".join(buffer).strip()
 
     fallback = _mock_summary(topic)
+    key_points = _ensure_items(_split_lines(sections["KEY POINTS"], 5), 3, fallback["key_points"])
+    opportunities = _ensure_items(_split_lines(sections["OPPORTUNITIES"], 5), 3, fallback["opportunities"])
+    risks = _ensure_items(_split_lines(sections["RISKS"], 5), 3, fallback["risks"])
+    questions = _ensure_items(_split_lines(sections["QUESTIONS"], 5), 3, fallback["questions"])
     return {
         "topic": _normalize_topic(topic),
         "mode": "openai",
         "overview": sections["OVERVIEW"] or fallback["overview"],
-        "key_points": _split_lines(sections["KEY POINTS"], 3) or fallback["key_points"],
-        "opportunities": _split_lines(sections["OPPORTUNITIES"], 3) or fallback["opportunities"],
-        "risks": _split_lines(sections["RISKS"], 3) or fallback["risks"],
-        "questions": _split_lines(sections["QUESTIONS"], 3) or fallback["questions"],
+        "key_points": key_points,
+        "opportunities": opportunities,
+        "risks": risks,
+        "questions": questions,
+        "takeaway": _build_takeaway(topic, opportunities, risks),
     }
 
 
