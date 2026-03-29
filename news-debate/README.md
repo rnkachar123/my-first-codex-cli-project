@@ -1,6 +1,6 @@
-# News Debate (Python)
+# Topic Summary Browser App (Python)
 
-For a plain-English explanation of the whole app, read `NONCODER_GUIDE.md`.
+For a plain-English explanation of the browser app, read `NONCODER_GUIDE.md`.
 
 ## Setup
 
@@ -17,10 +17,11 @@ pip install -r requirements.txt
 export OPENAI_API_KEY='your-key'
 ```
 
-If no API key is set, the app runs in local mock mode and generates an offline debate.
-If you want a template file, copy `.env.example` to `.env` and fill in your key locally.
+If no API key is set, the browser app runs in local mock mode and generates an offline summary.
 
 ## Run
+
+The existing terminal debate flow still works:
 
 ```bash
 python main.py "Should remote work be mandatory?"
@@ -32,7 +33,7 @@ python main.py "Should remote work be mandatory?"
 python web_app.py
 ```
 
-Then open `http://127.0.0.1:8000`.
+Then open `http://127.0.0.1:8000` to generate topic summaries in the browser.
 
 ## Plain-English Guide
 
