@@ -3,96 +3,81 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs
 
-from debate import debate
+from summarize import summarize_topic
 
 
-def render_page(topic: str = "", history=None) -> str:
+def render_page(topic: str = "", summary: str = "") -> str:
     safe_topic = html.escape(topic)
-    cards = ""
 
-    if history:
-        rendered = []
-        for index, (side, text) in enumerate(history, start=1):
-            label = "For" if side == "pro" else "Against"
-            css_class = "card-pro" if side == "pro" else "card-con"
-            rendered.append(
-                f"""
-                <article class="card {css_class}">
-                    <div class="meta">Round {index} · {label}</div>
-                    <p>{html.escape(text)}</p>
-                </article>
-                """
-            )
-        cards = "\n".join(rendered)
+    if summary:
+        content = f"""
+        <article class=\"summary-card\">
+          <h2>Quick Summary</h2>
+          <p>{html.escape(summary)}</p>
+        </article>
+        """
     else:
-        cards = """
-        <article class="empty-state">
-            <p>Enter a topic to generate a local debate view.</p>
+        content = """
+        <article class=\"empty-state\">
+          <p>Enter a topic to generate a quick summary.</p>
         </article>
         """
 
     return f"""<!doctype html>
-<html lang="en">
+<html lang=\"en\">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>News Debate</title>
+  <meta charset=\"utf-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <title>Quick Topic Summarizer</title>
   <style>
     :root {{
-      --bg: #f5efe6;
-      --surface: rgba(255, 252, 247, 0.88);
+      --bg: #eef3ff;
+      --surface: rgba(255, 255, 255, 0.9);
       --text: #1f2933;
       --muted: #52606d;
-      --pro: #1f7a5a;
-      --con: #a23e2f;
-      --accent: #f0b429;
-      --border: rgba(31, 41, 51, 0.12);
-      --shadow: 0 20px 50px rgba(31, 41, 51, 0.12);
+      --accent: #4458d8;
+      --border: rgba(31, 41, 51, 0.15);
+      --shadow: 0 18px 45px rgba(31, 41, 51, 0.12);
     }}
 
-    * {{
-      box-sizing: border-box;
-    }}
+    * {{ box-sizing: border-box; }}
 
     body {{
       margin: 0;
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: Inter, Arial, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at top left, rgba(240, 180, 41, 0.25), transparent 35%),
-        radial-gradient(circle at bottom right, rgba(31, 122, 90, 0.18), transparent 35%),
-        linear-gradient(135deg, #f7f1e8, #ece3d4);
+        radial-gradient(circle at top left, rgba(68, 88, 216, 0.2), transparent 35%),
+        radial-gradient(circle at bottom right, rgba(45, 160, 190, 0.2), transparent 35%),
+        linear-gradient(135deg, #f4f7ff, #eaf3ff);
       min-height: 100vh;
     }}
 
     .page {{
-      max-width: 980px;
+      max-width: 860px;
       margin: 0 auto;
       padding: 48px 20px 56px;
     }}
 
-    .hero {{
+    .panel {{
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 28px;
+      border-radius: 24px;
       box-shadow: var(--shadow);
-      padding: 32px;
-      backdrop-filter: blur(8px);
+      padding: 28px;
     }}
 
     h1 {{
-      margin: 0 0 12px;
-      font-size: clamp(2.2rem, 5vw, 4.6rem);
-      line-height: 0.95;
-      letter-spacing: -0.03em;
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 4.5vw, 3.2rem);
+      line-height: 1.05;
     }}
 
     .lead {{
-      margin: 0 0 24px;
-      max-width: 48rem;
+      margin: 0 0 22px;
       color: var(--muted);
-      font-size: 1.05rem;
-      line-height: 1.6;
+      line-height: 1.55;
+      max-width: 45rem;
     }}
 
     form {{
@@ -103,121 +88,86 @@ def render_page(topic: str = "", history=None) -> str:
 
     input {{
       width: 100%;
-      padding: 16px 18px;
-      border-radius: 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
       border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.92);
       font: inherit;
       font-size: 1rem;
     }}
 
     button {{
       border: 0;
-      border-radius: 16px;
-      background: linear-gradient(135deg, #1f7a5a, #155d46);
-      color: white;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #4458d8, #3247c3);
+      color: #fff;
       font: inherit;
       font-weight: 600;
-      padding: 16px 22px;
+      padding: 14px 18px;
       cursor: pointer;
     }}
 
     .topic {{
-      margin: 28px 0 16px;
+      margin: 22px 0 14px;
       color: var(--muted);
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
     }}
 
-    .cards {{
-      display: grid;
-      gap: 14px;
-      margin-top: 18px;
-    }}
-
-    .card,
+    .summary-card,
     .empty-state {{
-      background: rgba(255, 255, 255, 0.82);
+      background: rgba(255, 255, 255, 0.9);
       border: 1px solid var(--border);
-      border-radius: 22px;
+      border-radius: 18px;
       box-shadow: var(--shadow);
-      padding: 22px;
+      padding: 20px;
     }}
 
-    .card-pro {{
-      border-left: 8px solid var(--pro);
+    .summary-card h2 {{
+      margin: 0 0 10px;
+      font-size: 1.2rem;
     }}
 
-    .card-con {{
-      border-left: 8px solid var(--con);
-    }}
-
-    .meta {{
-      color: var(--muted);
-      font-size: 0.85rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 12px;
-    }}
-
-    .card p,
+    .summary-card p,
     .empty-state p {{
       margin: 0;
-      font-size: 1.04rem;
-      line-height: 1.7;
+      line-height: 1.65;
     }}
 
     .footer {{
-      margin-top: 18px;
+      margin-top: 16px;
       color: var(--muted);
       font-size: 0.92rem;
     }}
 
-    @media (max-width: 720px) {{
-      .page {{
-        padding-top: 28px;
-      }}
-
-      .hero {{
-        padding: 22px;
-        border-radius: 22px;
-      }}
-
-      form {{
-        grid-template-columns: 1fr;
-      }}
-
-      button {{
-        width: 100%;
-      }}
+    @media (max-width: 700px) {{
+      .page {{ padding-top: 26px; }}
+      .panel {{ padding: 20px; }}
+      form {{ grid-template-columns: 1fr; }}
+      button {{ width: 100%; }}
     }}
   </style>
 </head>
 <body>
-  <main class="page">
-    <section class="hero">
-      <h1>Debate a headline in local mock mode.</h1>
-      <p class="lead">
-        Type a topic and this app will generate a reasoned offline debate with alternating
-        supporting and opposing arguments plus closing rebuttals.
+  <main class=\"page\">
+    <section class=\"panel\">
+      <h1>Generate a quick topic summary.</h1>
+      <p class=\"lead\">
+        Enter any topic and this browser app creates a concise summary you can read in seconds.
       </p>
-      <form method="post">
+      <form method=\"post\">
         <input
-          type="text"
-          name="topic"
-          placeholder="Should AI tools be used in classrooms?"
-          value="{safe_topic}"
+          type=\"text\"
+          name=\"topic\"
+          placeholder=\"Artificial intelligence in healthcare\"
+          value=\"{safe_topic}\"
           required
         >
-        <button type="submit">Generate Debate</button>
+        <button type=\"submit\">Summarize</button>
       </form>
-      <div class="topic">Current topic: {safe_topic or "None yet"}</div>
-      <section class="cards">
-        {cards}
-      </section>
-      <p class="footer">Local mode runs without `OPENAI_API_KEY` and keeps the existing CLI intact.</p>
+      <div class=\"topic\">Current topic: {safe_topic or "None yet"}</div>
+      {content}
+      <p class=\"footer\">Uses OpenAI when <code>OPENAI_API_KEY</code> is set; otherwise uses local mock mode.</p>
     </section>
   </main>
 </body>
@@ -225,7 +175,7 @@ def render_page(topic: str = "", history=None) -> str:
 """
 
 
-class DebateHandler(BaseHTTPRequestHandler):
+class SummaryHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._send_html(render_page())
 
@@ -234,8 +184,8 @@ class DebateHandler(BaseHTTPRequestHandler):
         raw_body = self.rfile.read(content_length).decode("utf-8")
         form = parse_qs(raw_body)
         topic = form.get("topic", [""])[0].strip()
-        history = debate(topic) if topic else None
-        self._send_html(render_page(topic, history))
+        summary = summarize_topic(topic) if topic else ""
+        self._send_html(render_page(topic, summary))
 
     def log_message(self, format, *args):
         return
@@ -250,14 +200,15 @@ class DebateHandler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    server = HTTPServer(("127.0.0.1", 8000), DebateHandler)
-    print("Open http://127.0.0.1:8000 to view the debate app.")
+    server = HTTPServer(("127.0.0.1", 8000), SummaryHandler)
+    print("Open http://127.0.0.1:8000 to view the quick summary app.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+
     return 0
 
 
